@@ -89,7 +89,23 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
     
     setOpenMenuId(null);
   };
+  const handleJumpToDate = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedDate = e.target.value;
+    if (!selectedDate) return;
+    const [year, month, day] = selectedDate.split('-');
+    const dateObj = new Date(Number(year), Number(month) - 1, Number(day));
+    const targetDateString = dateObj.toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric'
+    });
 
+    const targetId = `date-${targetDateString.replace(/[\s,]+/g, '-')}`;
+    
+    const element = document.getElementById(targetId);
+    if (element) {
+      const y = element.getBoundingClientRect().top + window.scrollY - 60;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+  };
   return (
     <div className="history-container">
       <div className="history-header">
@@ -97,11 +113,16 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
 
         {selectedIds.length === 0 && (
           <div className="quick-actions">
+            <input 
+              type="date" 
+              className="btn-scrub date-picker" 
+              onChange={handleJumpToDate} 
+              title="Jump to date"
+            />
             <button className="btn-scrub" onClick={() => handleTimeScrub(15)}>Clear last 15m</button>
             <button className="btn-scrub" onClick={() => handleTimeScrub(60)}>Clear 1h</button>
           </div>
         )}
-
         {selectedIds.length > 0 && (
           <div className="bulk-actions">
             <span>{selectedIds.length} selected</span>
@@ -112,25 +133,28 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
       </div>
 
       <div className="history-list">
-        {Object.entries(groupedHistory).map(([date, items]) => (
-          <div key={date}>
-            <div className="history-date-group">{date}</div>
-            <ul>
-              {items.map((entry: chrome.history.HistoryItem) => {
-                const timeString = entry.lastVisitTime 
-                  ? new Date(entry.lastVisitTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                const domainString = entry.url ? new URL(entry.url).hostname : 'unknown';
+  {Object.entries(groupedHistory).map(([date, items]) => {
+    const groupId = `date-${date.replace(/[\s,]+/g, '-')}`;
 
-                return (
-                  <li 
-                    key={entry.id}
-                    className={`history-item ${isSelected(entry.id) ? 'selected' : ''}`}
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).tagName !== 'A' && !(e.target as HTMLElement).closest('.action-menu-container')) {
-                        toggleItem(entry.id, e.shiftKey);
-                      }
-                    }}
-                  >
+    return (
+      <div key={date} id={groupId}>
+        <div className="history-date-group">{date}</div>
+        <ul>
+          {items.map((entry: chrome.history.HistoryItem) => {
+            const timeString = entry.lastVisitTime 
+              ? new Date(entry.lastVisitTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            const domainString = entry.url ? new URL(entry.url).hostname : 'unknown';
+
+            return (
+              <li 
+                key={entry.id}
+                className={`history-item ${isSelected(entry.id) ? 'selected' : ''}`}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).tagName !== 'A' && !(e.target as HTMLElement).closest('.action-menu-container')) {
+                    toggleItem(entry.id, e.shiftKey);
+                  }
+                }}
+              >
                     <div className="item-checkbox">
                       <input type="checkbox" checked={isSelected(entry.id)} readOnly />
                     </div>
@@ -179,7 +203,8 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
               })}
             </ul>
           </div>
-        ))}
+        ); 
+      })}  
       </div>
     </div>
   );
