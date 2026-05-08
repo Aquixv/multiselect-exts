@@ -5,5 +5,11 @@
   "permissions": ["history", "favicon"],
   "chrome_url_overrides": {
     "history": "index.html"
+  },
+  "icons": {
+  "128": "pngegg.png"
+},
+"action": {
+    "default_popup": "popup.html"
   }
 }

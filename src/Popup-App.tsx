@@ -6,14 +6,16 @@ function App() {
   const [historyItems, setHistoryItems] = useState<chrome.history.HistoryItem[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [emptySearchDate, setEmptySearchDate] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(15);
+  const itemsToRender = historyItems.slice(0, visibleCount);
 
   const ids = historyItems.map(item => item.id);
   const { selectedIds, toggleItem, isSelected, clearAll } = useMultiSelect(ids);
 
   const fetchHistory = () => {
     if (typeof chrome !== 'undefined' && chrome.history) {
-      const thirtyDaysAgo = new Date().getTime() - (30 * 24 * 60 * 60 * 1000);
-      chrome.history.search({ text: '', maxResults: 5000, startTime: thirtyDaysAgo }, (results) => {
+      const thirtyDaysAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
+      chrome.history.search({ text: '', maxResults: 500, startTime: thirtyDaysAgo }, (results) => {
         setHistoryItems(results);
       });
     }
@@ -27,7 +29,7 @@ function App() {
     document.addEventListener('click', handleGlobalClick);
     return () => document.removeEventListener('click', handleGlobalClick);
   }, []);
-  const groupedHistory = historyItems.reduce((acc, item) => {
+  const groupedHistory = itemsToRender.reduce((acc, item) => {
     if (!item.lastVisitTime) return acc;
     const dateString = new Date(item.lastVisitTime).toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric'
@@ -228,12 +230,22 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
 
                     </div>
                   </li>
-                );
-              })}
+               ); 
+      })} 
+      {visibleCount < historyItems.length && (
+        <div style={{ textAlign: 'center', padding: '15px' }}>
+          <button 
+            className="btn-scrub" 
+            onClick={() => setVisibleCount(prev => prev + 100)}
+          >
+            Load Older History
+          </button>
+        </div>
+      )}
             </ul>
           </div>
         ); 
-      })}  
+        })} 
       </div>
     </div>
   );
