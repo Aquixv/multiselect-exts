@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMultiSelect } from 'use-multi-select-hook';
 import './App.css';
 
@@ -11,24 +12,6 @@ function App() {
 
   const ids = historyItems.map(item => item.id);
   const { selectedIds, toggleItem, isSelected, clearAll } = useMultiSelect(ids);
-
-  const fetchHistory = (daysToFetch: number) => {
-    if (typeof chrome !== 'undefined' && chrome.history) {
-      const startTime = new Date().getTime() - (daysToFetch * 24 * 60 * 60 * 1000);
-      chrome.history.search({ text: '', maxResults: 10000, startTime }, (results) => {
-        setHistoryItems(results);
-      });
-    }
-  };
-
-  useEffect(() => {
-    fetchHistory(daysLoaded);
-  }, [daysLoaded]);
- useEffect(() => {
-    const handleGlobalClick = () => setOpenMenuId(null);
-    document.addEventListener('click', handleGlobalClick);
-    return () => document.removeEventListener('click', handleGlobalClick);
-  }, []);
   const groupedHistory = historyItems.reduce((acc, item) => {
     if (!item.lastVisitTime) return acc;
     const dateString = new Date(item.lastVisitTime).toLocaleDateString('en-US', {
@@ -38,7 +21,25 @@ function App() {
     acc[dateString].push(item);
     return acc;
   }, {} as Record<string, chrome.history.HistoryItem[]>);
+  type FlatItem = 
+    | { type: 'header'; date: string }
+    | { type: 'item'; data: chrome.history.HistoryItem; date: string };
 
+  const flatItems: FlatItem[] = [];
+  Object.entries(groupedHistory).forEach(([date, items]) => {
+    flatItems.push({ type: 'header', date });
+    items.forEach(item => {
+      flatItems.push({ type: 'item', data: item, date });
+    });
+  });
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: flatItems.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index) => {
+      return flatItems[index].type === 'header' ? 40 : 60; 
+    },
+  });
   const handleDeleteSelected = () => {
     selectedIds.forEach(id => {
       const item = historyItems.find(h => h.id === id);
@@ -47,7 +48,22 @@ function App() {
     setHistoryItems(prev => prev.filter(item => !selectedIds.includes(item.id)));
     clearAll(); 
   };
-
+const fetchHistory = (daysToFetch: number) => {
+    if (typeof chrome !== 'undefined' && chrome.history) {
+      const startTime = new Date().getTime() - (daysToFetch * 24 * 60 * 60 * 1000);
+      chrome.history.search({ text: '', maxResults: 10000, startTime }, (results) => {
+        setHistoryItems(results);
+      });
+    }
+  };
+  useEffect(() => {
+    fetchHistory(daysLoaded);
+  }, [daysLoaded]);
+  useEffect(() => {
+    const handleGlobalClick = () => setOpenMenuId(null);
+    document.addEventListener('click', handleGlobalClick);
+    return () => document.removeEventListener('click', handleGlobalClick);
+  }, []);
   const handleTimeScrub = (minutes: number) => {
     if (!chrome.history) return;
     const startTime = new Date().getTime() - (minutes * 60 * 1000);
@@ -108,30 +124,33 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
     const dateObj = new Date(Number(year), Number(month) - 1, Number(day));
     const diffTime = new Date().getTime() - dateObj.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
     if (diffDays > daysLoaded) {
       setDaysLoaded(diffDays + 2);
     }
+
     const targetDateString = dateObj.toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric'
     });
 
-    const targetId = `date-${targetDateString.replace(/[\s,]+/g, '-')}`;
-    const scrollToElement = (id: string) => {
-      const element = document.getElementById(id);
-      if (element) {
-        const y = element.getBoundingClientRect().top + window.scrollY - 60;
-        window.scrollTo({ top: y, behavior: 'smooth' });
+    const scrollToDate = (targetDate: string) => {
+      const headerIndex = flatItems.findIndex(
+        item => item.type === 'header' && item.date === targetDate
+      );
+      if (headerIndex !== -1) {
+        rowVirtualizer.scrollToIndex(headerIndex, { align: 'start' });
       }
     };
 
     if (groupedHistory[targetDateString]) {
       setEmptySearchDate(null);
-      scrollToElement(targetId);
+      scrollToDate(targetDateString);
     } else {
       setEmptySearchDate(targetDateString);
-      setTimeout(() => scrollToElement(targetId), 50);
+      setTimeout(() => scrollToDate(targetDateString), 50);
     }
   };
+  
   return (
     <div className="history-container">
       <div className="history-header">
@@ -158,102 +177,129 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
         )}
       </div>
 
-      <div className="history-list">
-        {emptySearchDate && (
-          <div id={`date-${emptySearchDate.replace(/[\s,]+/g, '-')}`}>
-            <div className="history-date-group">{emptySearchDate}</div>
-            <div className="empty-state-message">
-              No history found for this date.
+      <div 
+        ref={parentRef} 
+        className="history-list" 
+        style={{ height: 'calc(100vh - 120px)', overflowY: 'auto', overflowX: 'hidden' }}
+      >
+        
+        <div
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {emptySearchDate && (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'gray' }}>
+              No history found for {emptySearchDate}.
             </div>
-          </div>
-        )}
-  {Object.entries(groupedHistory).map(([date, items]) => {
-    const groupId = `date-${date.replace(/[\s,]+/g, '-')}`;
+          )}
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const flatItem = flatItems[virtualRow.index];
 
-    return (
-      <div key={date} id={groupId}>
-        <div className="history-date-group">{date}</div>
-        <ul>
-          {items.map((entry: chrome.history.HistoryItem) => {
+            if (flatItem.type === 'header') {
+              return (
+                <div
+                  key={virtualRow.key}
+                  style={{
+                    position: 'absolute',
+                    top: 0, left: 0, width: '100%',
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <div className="history-date-group">{flatItem.date}</div>
+                </div>
+              );
+            }
+
+            const entry = flatItem.data;
+            const date = flatItem.date;
             const timeString = entry.lastVisitTime 
               ? new Date(entry.lastVisitTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
             const domainString = entry.url ? new URL(entry.url).hostname : 'unknown';
 
             return (
-              <li 
-                key={entry.id}
-                className={`history-item ${isSelected(entry.id) ? 'selected' : ''}`}
-                onClick={(e) => {
-                  if ((e.target as HTMLElement).tagName !== 'A' && !(e.target as HTMLElement).closest('.action-menu-container')) {
-                    toggleItem(entry.id, e.shiftKey);
-                  }
+              <div
+                key={virtualRow.key}
+                style={{
+                  position: 'absolute',
+                  top: 0, left: 0, width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                    <div className="item-checkbox">
-                      <input type="checkbox" checked={isSelected(entry.id)} readOnly />
+                <li 
+                  className={`history-item ${isSelected(entry.id) ? 'selected' : ''}`}
+                  style={{ listStyle: 'none' }}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).tagName !== 'A' && !(e.target as HTMLElement).closest('.action-menu-container')) {
+                      toggleItem(entry.id, e.shiftKey);
+                    }
+                  }}
+                >
+                  <div className="item-checkbox">
+                    <input type="checkbox" checked={isSelected(entry.id)} readOnly />
+                  </div>
+                  <div className="item-time">{timeString}</div>
+                  
+                  {chrome.runtime?.id && (
+                    <div className="item-favicon">
+                      <img 
+                        src={`chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(entry.url || '')}&size=32`} 
+                        alt="" 
+                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                      />
                     </div>
-                    <div className="item-time">{timeString}</div>
-                    
-                    {chrome.runtime?.id && (
-                      <div className="item-favicon">
-                        <img 
-                          src={`chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(entry.url || '')}&size=32`} 
-                          alt="" 
-                          onError={(e) => (e.currentTarget.style.display = 'none')}
-                        />
+                  )}
+                  
+                  <div className="item-details">
+                    <a href={entry.url} target="_blank" rel="noreferrer noopener" className="item-title">
+                      {entry.title || entry.url}
+                    </a>
+                    <span className="item-domain">{domainString}</span>
+                  </div>
+
+                  <div className="action-menu-container">
+                    <button 
+                      className="item-menu-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenuId(openMenuId === entry.id ? null : entry.id);
+                      }}
+                    >⋮</button>
+                    {openMenuId === entry.id && (
+                      <div className="dropdown-menu">
+                        <button onClick={() => handleDeleteDomainForDate(domainString, date)}>
+                          Delete from {domainString} for {date}
+                        </button>
+                        <button onClick={() => handleDeleteDomain(domainString)}>
+                          Delete ALL from {domainString}
+                        </button>
+                        <button onClick={handleOpenSelected}>
+                          Open {selectedIds.length} Tabs
+                        </button>
                       </div>
                     )}
-                    
-                    <div className="item-details">
-                      <a href={entry.url} target="_blank" rel="noreferrer" className="item-title">
-                        {entry.title || entry.url}
-                      </a>
-                      <span className="item-domain">{domainString}</span>
-                    </div>
-
-                    <div className="action-menu-container">
-                      <button 
-                        className="item-menu-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenMenuId(openMenuId === entry.id ? null : entry.id);
-                        }}
-                      >⋮</button>
-                      {openMenuId === entry.id && (
-                        <div className="dropdown-menu">
-                          <button onClick={() => handleDeleteDomainForDate(domainString, date)}>
-                            Delete from {domainString} for {date}
-                          </button>
-                          <button onClick={() => handleDeleteDomain(domainString)}>
-                            Delete ALL from {domainString}
-                          </button>
-                          <button onClick={handleOpenSelected}>
-        Open {selectedIds.length} Tabs
-      </button>
-                          </div>
-                      )}
-
-                    </div>
-                  </li>
-                ); 
-              })} 
-            </ul>
-          </div>
-        ); 
-      })}  
-
-      <div style={{ textAlign: 'center', padding: '30px 15px' }}>
-        <button 
-          className="btn-scrub" 
-          onClick={() => setDaysLoaded(prev => prev + 7)}
-          style={{ padding: '10px 20px', cursor: 'pointer' }}
-        >
-          Load More
-        </button>
+                  </div>
+                </li>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ textAlign: 'center', padding: '30px 15px' }}>
+          <button 
+            className="btn-scrub" 
+            onClick={() => setDaysLoaded(prev => prev + 7)}
+            style={{ padding: '10px 20px', cursor: 'pointer' }}
+          >
+            Load Older History
+          </button>
+        </div>
       </div>
 
       </div> 
-    </div> 
   );
 }
 

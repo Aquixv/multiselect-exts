@@ -1,3 +1,8 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden; 
+}
 :root {
   --bg-color: #ffffff;
   --text-color: #202124;
@@ -39,6 +44,9 @@ body {
   background: var(--bg-color);
   min-height: 100vh;
   box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+  height: 100vh; 
+  display: flex;
+  flex-direction: column;
 }
 
 .history-header {
@@ -115,11 +123,24 @@ body {
 .btn-cancel:hover {
   background-color: var(--hover-color);
 }
-
 .history-list {
-  padding: 24px 0;
+  padding: 24px;
+}
+.history-list::-webkit-scrollbar {
+  width: 8px;
 }
 
+.history-list::-webkit-scrollbar-track {
+  background: transparent; 
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background-color: #444; 
+  border-radius: 10px;
+}
+.history-list::-webkit-scrollbar-thumb:hover {
+  background-color: #666;
+}
 .history-date-group {
   padding: 0 24px 16px;
   font-size: 14px;
