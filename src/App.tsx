@@ -7,21 +7,23 @@ function App() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [emptySearchDate, setEmptySearchDate] = useState<string | null>(null);
 
+  const [daysLoaded, setDaysLoaded] = useState(7);
+
   const ids = historyItems.map(item => item.id);
   const { selectedIds, toggleItem, isSelected, clearAll } = useMultiSelect(ids);
 
-  const fetchHistory = () => {
+  const fetchHistory = (daysToFetch: number) => {
     if (typeof chrome !== 'undefined' && chrome.history) {
-      const thirtyDaysAgo = new Date().getTime() - (30 * 24 * 60 * 60 * 1000);
-      chrome.history.search({ text: '', maxResults: 5000, startTime: thirtyDaysAgo }, (results) => {
+      const startTime = new Date().getTime() - (daysToFetch * 24 * 60 * 60 * 1000);
+      chrome.history.search({ text: '', maxResults: 10000, startTime }, (results) => {
         setHistoryItems(results);
       });
     }
   };
 
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    fetchHistory(daysLoaded);
+  }, [daysLoaded]);
  useEffect(() => {
     const handleGlobalClick = () => setOpenMenuId(null);
     document.addEventListener('click', handleGlobalClick);
@@ -53,7 +55,7 @@ function App() {
       startTime: startTime,
       endTime: new Date().getTime()
     }, () => {
-      fetchHistory(); 
+      fetchHistory(daysLoaded); 
     });
   };
 
@@ -104,6 +106,11 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
 
     const [year, month, day] = selectedDate.split('-');
     const dateObj = new Date(Number(year), Number(month) - 1, Number(day));
+    const diffTime = new Date().getTime() - dateObj.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays > daysLoaded) {
+      setDaysLoaded(diffDays + 2);
+    }
     const targetDateString = dateObj.toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric'
     });
@@ -228,14 +235,25 @@ const handleDeleteDomainForDate = (domain: string, targetDate: string) => {
 
                     </div>
                   </li>
-                );
-              })}
+                ); 
+              })} 
             </ul>
           </div>
         ); 
       })}  
+
+      <div style={{ textAlign: 'center', padding: '30px 15px' }}>
+        <button 
+          className="btn-scrub" 
+          onClick={() => setDaysLoaded(prev => prev + 7)}
+          style={{ padding: '10px 20px', cursor: 'pointer' }}
+        >
+          Load More
+        </button>
       </div>
-    </div>
+
+      </div> 
+    </div> 
   );
 }
 

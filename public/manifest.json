@@ -8,8 +8,5 @@
   },
   "icons": {
   "128": "pngegg.png"
-},
-"action": {
-    "default_popup": "popup.html"
-  }
+}
 }
